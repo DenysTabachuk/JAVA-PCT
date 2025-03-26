@@ -11,7 +11,9 @@ public class Student extends Person {
 
     public Student(String name) {
         super(name);
-        this.grades = new ConcurrentHashMap<>();
+        this.grades = new ConcurrentHashMap<>(); // потокобезпечна (thread-safe) колекція
+
+
     }
 
     public void addGrade(Subject subject, int grade) {

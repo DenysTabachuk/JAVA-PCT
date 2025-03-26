@@ -24,6 +24,6 @@ public class SimpleMatrixMultiplication {
         long endTime = System.nanoTime();
         long duration = endTime - startTime;
 
-        return new Result(resultMatrix, duration); // Повертаємо результат
+        return new Result(resultMatrix, duration);
     }
 }

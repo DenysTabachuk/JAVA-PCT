@@ -2,35 +2,30 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class StrippedAlgorithm {
-
-//    Стрічковий алгоритм для множення матриць зазвичай передбачає, що матриці множаться за допомогою концепції "стрічки".
-//    Це означає, що обчислення результату відбувається за допомогою певної послідовності обчислень, де кожен потік може працювати
-//    над певною частиною обчислень, розподіленою по "стрічці" (наприклад, по певним ділянкам матриць).
 
     public static Result multiply(Matrix matrixA, Matrix matrixB, int numThreads) {
         long startTime = System.nanoTime();
 
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-        List<Runnable> tasks = new ArrayList<>();
+        List<Future<?>> futures = new ArrayList<>();
 
-        int n = matrixA.getMatrixSize();
-        Matrix resultMatrix = new Matrix(n);
+        Matrix resultMatrix = new Matrix(matrixA.getMatrixSize());
 
+        for (int i = 0; i < matrixA.getMatrixSize(); i++) {
+            int finalI = i;
+            futures.add(executor.submit(new StripedAlgorithmThread(matrixA.getRow(finalI), finalI, matrixB, resultMatrix)));
+        }
 
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                int col = (i + j) % n;
-                RowColMultiplyTask task = new RowColMultiplyTask(matrixA.getRow(j), matrixB.getColumn(col), resultMatrix, j, col);
-                tasks.add(task);
+        for (Future<?> future : futures) {
+            try {
+                future.get();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
-
-        for (Runnable task : tasks) {
-            executor.submit(task);
-        }
-
 
         executor.shutdown();
 
@@ -40,32 +35,30 @@ public class StrippedAlgorithm {
         return new Result(resultMatrix, duration);
     }
 
-
-    public static class  StripedAlgorithmThread implements Runnable {
+    public static class StripedAlgorithmThread implements Runnable {
         private int[] row;
-        private int[] col;
-        private Matrix resultMatrix;
         private int rowIndex;
-        private int colIndex;
+        private Matrix matrixB;
+        private Matrix resultMatrix;
 
-        public RowColMultiplyTask(int[] row, int[] col, Matrix resultMatrix, int rowIndex, int colIndex) {
+        public StripedAlgorithmThread(int[] row, int rowIndex, Matrix matrixB, Matrix resultMatrix) {
             this.row = row;
-            this.col = col;
-            this.resultMatrix = resultMatrix;
             this.rowIndex = rowIndex;
-            this.colIndex = colIndex;
+            this.resultMatrix = resultMatrix;
+            this.matrixB = matrixB;
         }
 
         @Override
         public void run() {
-            int result = 0;
-            for (int i = 0; i < row.length; i++) {
-                result += row[i] * col[i];
-            }
+            for (int i = 0; i < matrixB.getMatrixSize(); i++) {
+                int result = 0;
+                int[] column = matrixB.getColumn(i);
 
-            // Синхронізуємо доступ до матриці результату
-            synchronized (resultMatrix) {
-                resultMatrix.setElement(rowIndex, colIndex, result);
+                for (int j = 0; j < row.length; j++) {
+                    result += row[j] * column[j];
+                }
+
+                resultMatrix.setElement(rowIndex, i, result);
             }
         }
     }

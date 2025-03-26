@@ -6,7 +6,7 @@ public class SymbolPrinter implements Runnable {
     private static int turn = 0;
     private final int myTurn;
 
-    private static final int SYMBOLS_IN_ROW = 66;
+    private static final int SYMBOLS_IN_ROW = 22;
     private static final int ROWS = 90;
     private static int counter = 0;
 
@@ -55,6 +55,10 @@ public class SymbolPrinter implements Runnable {
 //            }
 //        }
 //    }
-
+//
 }
 
+
+
+// Кожен потік (який виводить свій символ) працює незалежно від інших, і
+// немає гарантії, що символи будуть виводитися у правильному порядку.

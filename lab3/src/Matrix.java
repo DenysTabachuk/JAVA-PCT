@@ -7,6 +7,11 @@ public class Matrix {
         this.size = size;
     }
 
+    public Matrix(int[][] matrix){
+        this.matrix = matrix;
+        size = matrix.length;
+    }
+
     public void setMatrix(int[][] matrix){
         this.matrix = matrix;
     }
@@ -58,9 +63,30 @@ public class Matrix {
         return this.matrix;
     }
 
-    // Встановлення елемента матриці за індексами рядка та стовпця
     public void setElement(int row, int col, int value) {
         matrix[row][col] = value;
+    }
+
+    public boolean equals(Matrix other) {
+        if (this.getMatrixSize() != other.getMatrixSize()) {
+            return false;
+        }
+
+        for (int i = 0; i < this.getMatrixSize(); i++) {
+            for (int j = 0; j < this.getMatrixSize(); j++) {
+                if (this.matrix[i][j] != other.matrix[i][j]) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    public int getElement(int row, int col) {
+        if (row < 0 || row >= size || col < 0 || col >= size) {
+            throw new IllegalArgumentException("Невірні індекси рядка чи стовпця");
+        }
+        return matrix[row][col];
     }
 
 }

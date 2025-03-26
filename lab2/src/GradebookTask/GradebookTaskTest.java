@@ -65,7 +65,6 @@ public class GradebookTaskTest {
         scanner.nextLine();
 
 
-        // Тепер переходимо до оновлення та видалення оцінок
         Thread lectorUpdateThread = new Thread(lectorUpdate);
         Thread assistantDeleteThread = new Thread(assistant4Delete);
         lectorUpdateThread.start();
