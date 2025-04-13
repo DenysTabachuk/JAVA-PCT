@@ -1,6 +1,6 @@
 public class MatrixMultiplicationTests {
     public static void main(String[] args) {
-        final int[] MATRIX_SIZES = {32, 64, 128, 256, 512, 1024};
+        final int[] MATRIX_SIZES = {32, 64, 128, 256, 512};
         final int[] NUM_THREADS = {1, 2, 4, 8,  16, 32};
 
         System.out.println("Matrix Multiplication Performance Tests\n");
