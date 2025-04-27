@@ -15,15 +15,15 @@ public class Main {
 
 
         // Виконуємо симуляції
-        SimulationResult parallelResult = runParallelSimulations(numChannels, queueCapacity, simulationTimeMs, meanIncomeTimeMs, meanServiceTimeMs, numSimulations);
+        SimulationResult simulationResult = runParallelSimulations(numChannels, queueCapacity, simulationTimeMs, meanIncomeTimeMs, meanServiceTimeMs, numSimulations);
 
         // Розрахунок теоретичних оцінок
         calculateTheoreticalEstimates(numChannels, queueCapacity, meanIncomeTimeMs, meanServiceTimeMs);
 
 
         System.out.println("\n====== Simulation Results ===========");
-        System.out.println("Rejection probability: " + String.format("%.2f", parallelResult.rejectionProbability * 100) + " %");
-        System.out.println("Average queue length: " + String.format("%.2f", parallelResult.averageQueueLength));
+        System.out.println("Rejection probability: " + String.format("%.2f", simulationResult.rejectionProbability * 100) + " %");
+        System.out.println("Average queue length: " + String.format("%.2f", simulationResult.averageQueueLength));
         System.out.println("=======================================");
 
     }

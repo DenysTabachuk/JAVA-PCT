@@ -29,7 +29,7 @@ public class MultiChannelMSS {
         // + 1 для Monitor
 
 
-        executorService.submit(new Producer(queue, result, meanIncomeTimeMs));
+        executorService.submit(new ProducerThread(queue, result, meanIncomeTimeMs));
 
         for (int i = 0; i < numChannels; i++){
             executorService.submit(new ServiceChannelThread(queue, result, meanServiceTimeMs));
@@ -46,7 +46,6 @@ public class MultiChannelMSS {
         }
 
         executorService.shutdownNow(); // Попросити всі потоки зупинитися (через interrupt)
-
 
         return result;
     }

@@ -1,7 +1,7 @@
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 
-public class Producer implements Runnable {
+public class ProducerThread implements Runnable {
     private boolean running = true;
 
     private final BlockingQueue<Customer> queue;
@@ -9,7 +9,7 @@ public class Producer implements Runnable {
     private final Random random;
     private final int meanIncomeTimeMs;
 
-    public Producer(BlockingQueue<Customer> queue, Result result, int meanIncomeTimeMs){
+    public ProducerThread(BlockingQueue<Customer> queue, Result result, int meanIncomeTimeMs){
         this.queue = queue;
         this.result = result;
         this.meanIncomeTimeMs = meanIncomeTimeMs  ;
