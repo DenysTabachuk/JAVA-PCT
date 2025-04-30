@@ -26,9 +26,13 @@ public class ServiceChannelThread implements Runnable {
             try {
                 Customer customer = queue.poll(100, TimeUnit.MILLISECONDS);
                 if (customer != null) {
+                    System.out.println("Customer " + customer.getId() + " being serviced");
+
                     int serviceTime = generateNormalServiceTime(meanServiceTimeMs);
                     Thread.sleep(serviceTime);
                     result.incrementProcessedRequests();
+
+                    System.out.println("Finished serving customer " + customer.getId());
                 }
             } catch (InterruptedException e) {
                 running = false;

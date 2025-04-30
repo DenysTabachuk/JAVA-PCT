@@ -18,12 +18,12 @@ public class Main {
         SimulationResult simulationResult = runParallelSimulations(numChannels, queueCapacity, simulationTimeMs, meanIncomeTimeMs, meanServiceTimeMs, numSimulations);
 
         // Розрахунок теоретичних оцінок
-        calculateTheoreticalEstimates(numChannels, queueCapacity, meanIncomeTimeMs, meanServiceTimeMs);
+        calculateTheoreticalEstimates(numChannels, queueCapacity, meanIncomeTimeMs, meanServiceTimeMs, queueCapacity);
 
 
         System.out.println("\n====== Simulation Results ===========");
         System.out.println("Rejection probability: " + String.format("%.2f", simulationResult.rejectionProbability * 100) + " %");
-        System.out.println("Average queue length: " + String.format("%.2f", simulationResult.averageQueueLength));
+        System.out.println("Average queue length: " + String.format("%.2f", simulationResult.averageQueueLength) + "/" + queueCapacity);
         System.out.println("=======================================");
 
     }
@@ -57,7 +57,7 @@ public class Main {
 
 
     // Теоретичний метод для обчислення показників для черги M/M/c/K
-    private static void calculateTheoreticalEstimates(int c, int K, int meanIncomeTimeMs, int meanServiceTimeMs) {
+    private static void calculateTheoreticalEstimates(int c, int K, int meanIncomeTimeMs, int meanServiceTimeMs, int queueCapacity) {
         double lambda = 1000.0 / meanIncomeTimeMs;
         double mu = 1000.0 / meanServiceTimeMs;
         double rho = lambda / (c * mu);
@@ -101,7 +101,7 @@ public class Main {
         System.out.println("Traffic intensity (ρ): " + String.format("%.2f", rho));
         System.out.println("Probability of empty system (p₀): " + String.format("%.4f", p0));
         System.out.println("Rejection probability: " + String.format("%.2f", pK ) + " %");
-        System.out.println("Average queue length: " + String.format("%.2f", Lq));
+        System.out.println("Average queue length: " + String.format("%.2f", Lq) + "/" + queueCapacity );
         System.out.println("=======================================\n");
 
     }
