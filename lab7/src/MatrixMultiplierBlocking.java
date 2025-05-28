@@ -1,121 +1,108 @@
-import mpi.*;
-import static mpi.MPI.COMM_WORLD;
+import mpi.MPI;
 
 public class MatrixMultiplierBlocking {
+    static final int TAG_FROM_MASTER = 1;
+    static final int TAG_FROM_WORKER = 2;
     private boolean verbose;
 
-    public static final int TAG_FROM_MASTER = 1;
-    public static final int TAG_FROM_WORKER = 2;
-
-    // Конструктор за замовчуванням - verbose вимкнено
     public MatrixMultiplierBlocking() {
         this.verbose = false;
     }
 
-    // Конструктор з параметром verbose
     public MatrixMultiplierBlocking(boolean verbose) {
         this.verbose = verbose;
     }
 
-    // Сеттер для зміни verbose "на льоту"
-    public void setVerbose(boolean verbose) {
-        this.verbose = verbose;
-    }
+    public int[][] multiply(int[][] matrixA, int[][] matrixB, int currentTaskId, int totalTasks, int masterTaskId) {
+        // Matrix dimensions
+        int totalRowsA = (matrixA != null) ? matrixA.length : 0;      // Number of rows in A
+        int totalColsA = (matrixA != null) ? matrixA[0].length : matrixB.length; // Columns of A == rows of B
+        int totalColsB = matrixB[0].length;                           // Number of columns in B
+        int numberOfWorkers = totalTasks - 1;
 
-    public int[][] multiply(int[][] matrixA, int[][] matrixB, int taskId, int totalTasks, int MASTER) throws Exception {
-        int ROWS_A = matrixA.length;
-        int COLS_A = matrixA[0].length;
-        int COLS_B = matrixB[0].length;
-        int workerCount = totalTasks - 1;
-        int[][] resultMatrix = new int[ROWS_A][COLS_B];
+        int[][] resultMatrix = null; // Final result matrix (only created by master)
 
-        if (taskId == MASTER) {
-            if (verbose) {
-                System.out.println("Master started.");
-            }
-            int avgRowsPerWorker = ROWS_A / workerCount;
-            int extraRows = ROWS_A % workerCount;
-            int currentOffset = 0;
-            for (int dest = 1; dest <= workerCount; dest++) {
-                int rowsToSend = (dest <= extraRows) ? avgRowsPerWorker + 1 : avgRowsPerWorker;
-                COMM_WORLD.Send(new int[]{currentOffset}, 0, 1, MPI.INT, dest, TAG_FROM_MASTER);
-                COMM_WORLD.Send(new int[]{rowsToSend}, 0, 1, MPI.INT, dest, TAG_FROM_MASTER);
-                COMM_WORLD.Send(flattenMatrix(matrixA, currentOffset, rowsToSend, COLS_A), 0, rowsToSend * COLS_A, MPI.INT, dest, TAG_FROM_MASTER);
-                COMM_WORLD.Send(flattenMatrix(matrixB, 0, COLS_A, COLS_B), 0, COLS_A * COLS_B, MPI.INT, dest, TAG_FROM_MASTER);
-                currentOffset += rowsToSend;
-            }
-            for (int source = 1; source <= workerCount; source++) {
-                int[] offsetBuf = new int[1];
-                int[] rowsBuf = new int[1];
-                COMM_WORLD.Recv(offsetBuf, 0, 1, MPI.INT, source, TAG_FROM_WORKER);
-                COMM_WORLD.Recv(rowsBuf, 0, 1, MPI.INT, source, TAG_FROM_WORKER);
-                int[] cPart = new int[rowsBuf[0] * COLS_B];
-                COMM_WORLD.Recv(cPart, 0, rowsBuf[0] * COLS_B, MPI.INT, source, TAG_FROM_WORKER);
+        // Arrays used for sending offset and number of rows to workers
+        int[] rowOffset = new int[1];
+        int[] numRowsToSend = new int[1];
+
+        // --- Master process ---
+        if (currentTaskId == masterTaskId) {
+            resultMatrix = new int[totalRowsA][totalColsB];
+
+            int averageRowsPerWorker = totalRowsA / numberOfWorkers;
+            int extraRows = totalRowsA % numberOfWorkers;
+            rowOffset[0] = 0; // Starting row offset for sending
+
+            if (verbose)
+                System.out.println("Master started with " + totalTasks + " total tasks.");
+
+            // Send portions of Matrix A and full Matrix B to workers
+            for (int workerId = 1; workerId <= numberOfWorkers; workerId++) {
+                numRowsToSend[0] = (workerId <= extraRows) ? averageRowsPerWorker + 1 : averageRowsPerWorker;
+
+                // Send meta info and data to worker
+                MPI.COMM_WORLD.Send(rowOffset, 0, 1, MPI.INT, workerId, TAG_FROM_MASTER);
+                MPI.COMM_WORLD.Send(numRowsToSend, 0, 1, MPI.INT, workerId, TAG_FROM_MASTER);
+                MPI.COMM_WORLD.Send(matrixA, rowOffset[0], numRowsToSend[0], MPI.OBJECT, workerId, TAG_FROM_MASTER);
+                MPI.COMM_WORLD.Send(matrixB, 0, totalColsA, MPI.OBJECT, workerId, TAG_FROM_MASTER);
 
                 if (verbose) {
-                    synchronized (System.out) {
-                        System.out.println("Master received partial result from worker " + source + ": ");
-                        for (int i = 0; i < rowsBuf[0]; i++) {
-                            for (int j = 0; j < COLS_B; j++) {
-                                System.out.print(cPart[i * COLS_B + j] + " ");
-                            }
-                            System.out.println();
-                        }
-                    }
+                    System.out.println("Sent " + numRowsToSend[0] + " rows to task " + workerId +
+                            " (offset " + rowOffset[0] + ")");
                 }
-                expandMatrix(resultMatrix, cPart, offsetBuf[0], rowsBuf[0], COLS_B);
+
+                rowOffset[0] += numRowsToSend[0]; // Update offset for next worker
             }
-        } else {
-            int[] offsetBuf = new int[1];
-            int[] rowsBuf = new int[1];
-            COMM_WORLD.Recv(offsetBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_MASTER);
-            COMM_WORLD.Recv(rowsBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_MASTER);
-            int rows = rowsBuf[0];
-            int[] aFlat = new int[rows * COLS_A];
-            int[] bFlat = new int[COLS_A * COLS_B];
-            int[] cFlat = new int[rows * COLS_B];
-            COMM_WORLD.Recv(aFlat, 0, rows * COLS_A, MPI.INT, MASTER, TAG_FROM_MASTER);
-            COMM_WORLD.Recv(bFlat, 0, COLS_A * COLS_B, MPI.INT, MASTER, TAG_FROM_MASTER);
-            for (int k = 0; k < COLS_B; k++) {
-                for (int i = 0; i < rows; i++) {
+
+            // Receive computed sub-results from all workers
+            for (int workerId = 1; workerId <= numberOfWorkers; workerId++) {
+                MPI.COMM_WORLD.Recv(rowOffset, 0, 1, MPI.INT, workerId, TAG_FROM_WORKER);
+                MPI.COMM_WORLD.Recv(numRowsToSend, 0, 1, MPI.INT, workerId, TAG_FROM_WORKER);
+                MPI.COMM_WORLD.Recv(resultMatrix, rowOffset[0], numRowsToSend[0], MPI.OBJECT, workerId, TAG_FROM_WORKER);
+
+                if (verbose) {
+                    System.out.println("Received results from task " + workerId);
+                }
+            }
+
+        }
+        // --- Worker process ---
+        else {
+            // Receive metadata
+            MPI.COMM_WORLD.Recv(rowOffset, 0, 1, MPI.INT, masterTaskId, TAG_FROM_MASTER);
+            MPI.COMM_WORLD.Recv(numRowsToSend, 0, 1, MPI.INT, masterTaskId, TAG_FROM_MASTER);
+
+            // Allocate memory for submatrices
+            int[][] subMatrixA = new int[numRowsToSend[0]][totalColsA];
+            int[][] fullMatrixB = new int[totalColsA][totalColsB];
+            int[][] subResult = new int[numRowsToSend[0]][totalColsB];
+
+            // Receive actual data
+            MPI.COMM_WORLD.Recv(subMatrixA, 0, numRowsToSend[0], MPI.OBJECT, masterTaskId, TAG_FROM_MASTER);
+            MPI.COMM_WORLD.Recv(fullMatrixB, 0, totalColsA, MPI.OBJECT, masterTaskId, TAG_FROM_MASTER);
+
+            // Perform matrix multiplication
+            for (int i = 0; i < numRowsToSend[0]; i++) {
+                for (int colB = 0; colB < totalColsB; colB++) {
                     int sum = 0;
-                    for (int j = 0; j < COLS_A; j++) {
-                        sum += aFlat[i * COLS_A + j] * bFlat[j * COLS_B + k];
+                    for (int j = 0; j < totalColsA; j++) {
+                        sum += subMatrixA[i][j] * fullMatrixB[j][colB];
                     }
-                    cFlat[i * COLS_B + k] = sum;
+                    subResult[i][colB] = sum;
                 }
             }
+
             if (verbose) {
-                StringBuilder sb = new StringBuilder();
-                sb.append("Worker ").append(taskId).append(" calculated partial result:\n");
-                for (int i = 0; i < rows; i++) {
-                    for (int j = 0; j < COLS_B; j++) {
-                        sb.append(cFlat[i * COLS_B + j]).append(" ");
-                    }
-                    sb.append("\n");
-                }
-                synchronized (System.out) {
-                    System.out.print(sb.toString());
-                }
+                System.out.println("Worker " + currentTaskId + " completed computation.");
             }
-            COMM_WORLD.Send(offsetBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_WORKER);
-            COMM_WORLD.Send(rowsBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_WORKER);
-            COMM_WORLD.Send(cFlat, 0, rows * COLS_B, MPI.INT, MASTER, TAG_FROM_WORKER);
+
+            // Send results back to master
+            MPI.COMM_WORLD.Send(rowOffset, 0, 1, MPI.INT, masterTaskId, TAG_FROM_WORKER);
+            MPI.COMM_WORLD.Send(numRowsToSend, 0, 1, MPI.INT, masterTaskId, TAG_FROM_WORKER);
+            MPI.COMM_WORLD.Send(subResult, 0, numRowsToSend[0], MPI.OBJECT, masterTaskId, TAG_FROM_WORKER);
         }
+
         return resultMatrix;
-    }
-
-    private static int[] flattenMatrix(int[][] matrix, int rowOffset, int rows, int cols) {
-        int[] flat = new int[rows * cols];
-        for (int i = 0; i < rows; i++) {
-            System.arraycopy(matrix[rowOffset + i], 0, flat, i * cols, cols);
-        }
-        return flat;
-    }
-
-    private static void expandMatrix(int[][] resultMatrix, int[] cPart, int offset, int rows, int cols) {
-        for (int i = 0; i < rows; i++) {
-            System.arraycopy(cPart, i * cols, resultMatrix[offset + i], 0, cols);
-        }
     }
 }

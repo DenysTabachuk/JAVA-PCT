@@ -1,7 +1,7 @@
 import mpi.MPI;
 import mpi.Request;
 
-import static mpi.MPI.*;
+import static mpi.MPI.COMM_WORLD;
 
 public class MatrixMultiplierNonBlocking {
 
@@ -23,103 +23,96 @@ public class MatrixMultiplierNonBlocking {
     }
 
     public int[][] multiply(int[][] matrixA, int[][] matrixB, int taskId, int totalTasks, int MASTER) throws Exception {
-        int ROWS_A = matrixA.length;
-        int COLS_A = matrixA[0].length;
-        int COLS_B = matrixB[0].length;
+        int numRowsA = matrixA.length;
+        int numColsA = matrixA[0].length;
+        int numColsB = matrixB[0].length;
         int workerCount = totalTasks - 1;
-        int[][] resultMatrix = new int[ROWS_A][COLS_B];
+        int[][] resultMatrix = new int[numRowsA][numColsB];
+
+        int[] numRowsToSend = {0};
+        int[] rowOffset = {0};
 
         if (taskId == MASTER) {
-            if (verbose) {
-                System.out.println("Master started (non-blocking).");
-            }
-            int avgRowsPerWorker = ROWS_A / workerCount;
-            int extraRows = ROWS_A % workerCount;
-            int currentOffset = 0;
+            if (verbose) System.out.println("Master started (non-blocking).");
 
-            Request[] sendRequests = new Request[workerCount * 4];
-            int requestIndex = 0;
+            int avgRowsPerWorker = numRowsA / workerCount;
+            int extraRows = numRowsA % workerCount;
 
-            // Неблокуюче розподілення задач серед робітників
+            // Розсилаємо частини матриці A та всю матрицю B
             for (int dest = 1; dest <= workerCount; dest++) {
-                int rowsToSend = (dest <= extraRows) ? avgRowsPerWorker + 1 : avgRowsPerWorker;
-                sendRequests[requestIndex++] = COMM_WORLD.Isend(new int[]{currentOffset}, 0, 1, MPI.INT, dest, TAG_FROM_MASTER);
-                sendRequests[requestIndex++] = COMM_WORLD.Isend(new int[]{rowsToSend}, 0, 1, MPI.INT, dest, TAG_FROM_MASTER);
-                sendRequests[requestIndex++] = COMM_WORLD.Isend(flattenMatrix(matrixA, currentOffset, rowsToSend, COLS_A), 0, rowsToSend * COLS_A, MPI.INT, dest, TAG_FROM_MASTER);
-                sendRequests[requestIndex++] = COMM_WORLD.Isend(flattenMatrix(matrixB, 0, COLS_A, COLS_B), 0, COLS_A * COLS_B, MPI.INT, dest, TAG_FROM_MASTER);
-                currentOffset += rowsToSend;
+                numRowsToSend[0] = (dest <= extraRows) ? avgRowsPerWorker + 1 : avgRowsPerWorker;
+
+                if (verbose) {
+                    System.out.println("Sending " + numRowsToSend[0] + " rows to task " + dest +
+                            ", offset = " + rowOffset[0]);
+                }
+
+                // Відправляємо дані у неблокуючому режимі
+                COMM_WORLD.Isend(matrixB, 0, numColsA, MPI.OBJECT, dest, TAG_FROM_MASTER); // вся матриця B
+                COMM_WORLD.Isend(rowOffset, 0, 1, MPI.INT, dest, TAG_FROM_MASTER);         // offset
+                COMM_WORLD.Isend(numRowsToSend, 0, 1, MPI.INT, dest, TAG_FROM_MASTER);     // rows
+                COMM_WORLD.Isend(matrixA, rowOffset[0], numRowsToSend[0], MPI.OBJECT, dest, TAG_FROM_MASTER); // частина A
+
+                rowOffset[0] += numRowsToSend[0];
             }
-            // Чекати завершення всіх надсилань
-            Request.Waitall(sendRequests);
 
-            // Неблокуюче отримання результатів від робітників
-            Request[] recvRequests = new Request[workerCount * 3]; // offset, rows, partialResults
-            int[][] offsets = new int[workerCount][1];
-            int[][] rows = new int[workerCount][1];
-            int[][] partialResults = new int[workerCount][]; // Часткові результати
-
+            // Приймаємо результати від робітників
+            rowOffset[0] = 0; // скидаємо offset для прийому
             for (int source = 1; source <= workerCount; source++) {
-                int idx = (source - 1) * 3;
-                partialResults[source - 1] = new int[(avgRowsPerWorker + 1) * COLS_B]; // Максимальний розмір
-                recvRequests[idx] = COMM_WORLD.Irecv(offsets[source - 1], 0, 1, MPI.INT, source, TAG_FROM_WORKER);
-                recvRequests[idx + 1] = COMM_WORLD.Irecv(rows[source - 1], 0, 1, MPI.INT, source, TAG_FROM_WORKER);
-                recvRequests[idx + 2] = COMM_WORLD.Irecv(partialResults[source - 1], 0, (avgRowsPerWorker + 1) * COLS_B, MPI.INT, source, TAG_FROM_WORKER);
-            }
-            // Чекати завершення всіх отримань
-            Request.Waitall(recvRequests);
+                COMM_WORLD.Irecv(rowOffset, 0, 1, MPI.INT, source, TAG_FROM_WORKER).Wait();
+                COMM_WORLD.Irecv(numRowsToSend, 0, 1, MPI.INT, source, TAG_FROM_WORKER).Wait();
+                COMM_WORLD.Irecv(resultMatrix, rowOffset[0], numRowsToSend[0], MPI.OBJECT, source, TAG_FROM_WORKER).Wait();
 
-            // Побудова кінцевої матриці результатів
-            for (int source = 1; source <= workerCount; source++) {
-                int offset = offsets[source - 1][0];
-                int rowsToReceive = rows[source - 1][0];
-                expandMatrix(resultMatrix, partialResults[source - 1], offset, rowsToReceive, COLS_B);
-            }
+                if (verbose) {
+                    System.out.println("Master received partial result from worker " + source);
+                }
 
-            if (verbose) {
-                System.out.println("Master finished assembling result.");
+                rowOffset[0] += numRowsToSend[0];
             }
 
         } else {
-            // Неблокуюче отримання даних від майстра
-            int[] offsetBuf = new int[1];
-            int[] rowsBuf = new int[1];
-            Request[] recvRequests = new Request[4]; // offset, rows, aFlat, bFlat
+            // Worker receives data
+            int[][] partialA = new int[numRowsA][numColsA];  // Повна матриця A не використовується, тільки частина
+            int[][] fullB = new int[numColsA][numColsB];     // Повна матриця B
+            int[] offsetBuf = {0};
+            int[] rowsBuf = {0};
 
-            recvRequests[0] = COMM_WORLD.Irecv(offsetBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_MASTER);
-            recvRequests[1] = COMM_WORLD.Irecv(rowsBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_MASTER);
+            // Отримання повної B
+            Request recvBRequest = COMM_WORLD.Irecv(fullB, 0, numColsA, MPI.OBJECT, MASTER, TAG_FROM_MASTER);
 
-            // Очікування завершення перших двох отримань (offset і rows)
-            Request.Waitall(new Request[]{recvRequests[0], recvRequests[1]});
+            // Отримання offset і кількості рядків
+            COMM_WORLD.Irecv(offsetBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_MASTER).Wait();
+            COMM_WORLD.Irecv(rowsBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_MASTER).Wait();
 
-            int rows = rowsBuf[0];
-            int[] aFlat = new int[rows * COLS_A];
-            int[] bFlat = new int[COLS_A * COLS_B];
+            int numRowsReceived = rowsBuf[0];
+            int[][] receivedA = new int[numRowsReceived][numColsA];
 
-            recvRequests[2] = COMM_WORLD.Irecv(aFlat, 0, rows * COLS_A, MPI.INT, MASTER, TAG_FROM_MASTER);
-            recvRequests[3] = COMM_WORLD.Irecv(bFlat, 0, COLS_A * COLS_B, MPI.INT, MASTER, TAG_FROM_MASTER);
+            // Отримання частини A
+            Request recvARequest = COMM_WORLD.Irecv(receivedA, 0, numRowsReceived, MPI.OBJECT, MASTER, TAG_FROM_MASTER);
 
-            // Очікування завершення отримань матриці
-            Request.Waitall(new Request[]{recvRequests[2], recvRequests[3]});
+            recvBRequest.Wait();
+            recvARequest.Wait();
 
-            int[] cFlat = new int[rows * COLS_B];
+            // Обчислення часткової результуючої матриці
+            int[][] partialResult = new int[numRowsReceived][numColsB];
 
-            // Обчислення
-            for (int k = 0; k < COLS_B; k++) {
-                for (int i = 0; i < rows; i++) {
+            for (int i = 0; i < numRowsReceived; i++) {
+                for (int j = 0; j < numColsB; j++) {
                     int sum = 0;
-                    for (int j = 0; j < COLS_A; j++) {
-                        sum += aFlat[i * COLS_A + j] * bFlat[j * COLS_B + k];
+                    for (int k = 0; k < numColsA; k++) {
+                        sum += receivedA[i][k] * fullB[k][j];
                     }
-                    cFlat[i * COLS_B + k] = sum;
+                    partialResult[i][j] = sum;
                 }
             }
 
+            // Вивід часткового результату
             if (verbose) {
                 StringBuilder sb = new StringBuilder();
                 sb.append("Worker ").append(taskId).append(" calculated partial result:\n");
-                for (int i = 0; i < rows; i++) {
-                    for (int j = 0; j < COLS_B; j++) {
-                        sb.append(cFlat[i * COLS_B + j]).append(" ");
+                for (int[] row : partialResult) {
+                    for (int val : row) {
+                        sb.append(val).append(" ");
                     }
                     sb.append("\n");
                 }
@@ -128,17 +121,16 @@ public class MatrixMultiplierNonBlocking {
                 }
             }
 
-            // Неблокуюче відправлення результату
-            Request[] sendRequests = new Request[3]; // offset, rows, cFlat
-            sendRequests[0] = COMM_WORLD.Isend(offsetBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_WORKER);
-            sendRequests[1] = COMM_WORLD.Isend(rowsBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_WORKER);
-            sendRequests[2] = COMM_WORLD.Isend(cFlat, 0, rows * COLS_B, MPI.INT, MASTER, TAG_FROM_WORKER);
-            Request.Waitall(sendRequests);
+            // Надсилаємо результат назад
+            COMM_WORLD.Isend(offsetBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_WORKER);
+            COMM_WORLD.Isend(rowsBuf, 0, 1, MPI.INT, MASTER, TAG_FROM_WORKER);
+            COMM_WORLD.Isend(partialResult, 0, numRowsReceived, MPI.OBJECT, MASTER, TAG_FROM_WORKER);
         }
 
         return resultMatrix;
     }
 
+    // Функції flatten/expand наразі не використовуються, але корисні для альтернативного способу передачі
     private static int[] flattenMatrix(int[][] matrix, int rowOffset, int rows, int cols) {
         int[] flat = new int[rows * cols];
         for (int i = 0; i < rows; i++) {
@@ -147,9 +139,9 @@ public class MatrixMultiplierNonBlocking {
         return flat;
     }
 
-    private static void expandMatrix(int[][] resultMatrix, int[] cPart, int offset, int rows, int cols) {
+    private static void expandMatrix(int[][] resultMatrix, int[] flat, int offset, int rows, int cols) {
         for (int i = 0; i < rows; i++) {
-            System.arraycopy(cPart, i * cols, resultMatrix[offset + i], 0, cols);
+            System.arraycopy(flat, i * cols, resultMatrix[offset + i], 0, cols);
         }
     }
 }

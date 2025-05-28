@@ -2,7 +2,7 @@ import mpi.*;
 
 public class Main {
     static final int MASTER = 0;
-    static int[] matrixSizes = {100, 200, 400, 600};
+    static int[] matrixSizes = {100, 300, 500, 700};
     static int numRuns = 5; // Кількість запусків для кожного методу
     static int logicalCoreCount = 12;
 
@@ -13,6 +13,7 @@ public class Main {
         int totalTasks = MPI.COMM_WORLD.Size();
 
         if (taskId == MASTER) {
+            // Вивід заголовку таблиці з результатами (тільки для головного процесу)
             System.out.println("-----------------------------------------------------------------------------------------------------------------------------");
             System.out.printf("| %-5s | %-5s | %-12s | %-14s | %-14s | %-10s | %-15s | %-15s | %-10s | %-8s |\n",
                     "Size", "Proc", "Seq Time(ms)", "Block Time(ms)", "Block Speedup", "Block Eff",
@@ -25,36 +26,37 @@ public class Main {
             int[][] matrixB = new int[size][size];
 
             if (taskId == MASTER) {
+                // Генерація випадкових матриць (тільки головним процесом)
                 matrixA = MatrixUtils.generateMatrix(size, size);
                 matrixB = MatrixUtils.generateMatrix(size, size);
             }
 
-            // Blocking multiply
+            // Блокуюче множення матриць (MPI Blocking)
             long blockingTotalTime = 0;
             int[][] resultMatrixBlocking = null;
             for (int i = 0; i < numRuns; i++) {
                 long startTimeBlocking = System.currentTimeMillis();
                 resultMatrixBlocking = new MatrixMultiplierBlocking().multiply(matrixA, matrixB, taskId, totalTasks, MASTER);
-                MPI.COMM_WORLD.Barrier();
+                MPI.COMM_WORLD.Barrier(); // Синхронізація процесів
                 long endTimeBlocking = System.currentTimeMillis();
                 blockingTotalTime += (endTimeBlocking - startTimeBlocking);
             }
             long blockingTime = blockingTotalTime / numRuns;
 
-            // Non-blocking multiply
+            // Неблокуюче множення матриць (MPI Non-Blocking)
             long nonBlockingTotalTime = 0;
             int[][] resultMatrixNonBlocking = null;
             for (int i = 0; i < numRuns; i++) {
                 long startTimeNonBlocking = System.currentTimeMillis();
-                resultMatrixNonBlocking = new MatrixMultiplierNonBlocking().multiply(matrixA, matrixB, taskId, totalTasks, MASTER);
-                MPI.COMM_WORLD.Barrier();
+                resultMatrixNonBlocking = new MatrixMultiplierNonBlocking(false).multiply(matrixA, matrixB, taskId, totalTasks, MASTER);
+                MPI.COMM_WORLD.Barrier(); // Синхронізація процесів
                 long endTimeNonBlocking = System.currentTimeMillis();
                 nonBlockingTotalTime += (endTimeNonBlocking - startTimeNonBlocking);
             }
             long nonBlockingTime = nonBlockingTotalTime / numRuns;
 
             if (taskId == MASTER) {
-                // Sequential multiply for correctness and baseline
+                // Послідовне множення для перевірки коректності та як базовий еталон
                 long sequentialTotalTime = 0;
                 int[][] resultMatrixSeq = null;
                 for (int i = 0; i < numRuns; i++) {
@@ -65,17 +67,19 @@ public class Main {
                 }
                 long sequentialTime = sequentialTotalTime / numRuns;
 
+                // Перевірка коректності паралельних обчислень
                 boolean blockingCorrect = MatrixUtils.areEqual(resultMatrixSeq, resultMatrixBlocking);
                 boolean nonBlockingCorrect = MatrixUtils.areEqual(resultMatrixSeq, resultMatrixNonBlocking);
-
                 String allCorrect = (blockingCorrect && nonBlockingCorrect) ? "+" : "-";
 
+                // Обчислення прискорення (speedup) та ефективності (efficiency)
                 double speedupBlocking = (double) sequentialTime / blockingTime;
                 double efficiencyBlocking = speedupBlocking / logicalCoreCount;
 
                 double speedupNonBlocking = (double) sequentialTime / nonBlockingTime;
                 double efficiencyNonBlocking = speedupNonBlocking / logicalCoreCount;
 
+                // Вивід результатів у вигляді таблиці
                 System.out.printf("| %-5d | %-5d | %-12d | %-14d | %-14.2f | %-10.2f | %-15d | %-15.2f | %-10.2f | %-8s |\n",
                         size, totalTasks,
                         sequentialTime,
@@ -85,6 +89,7 @@ public class Main {
             }
         }
 
+        // Завершення MPI-середовища
         MPI.Finalize();
     }
 }
