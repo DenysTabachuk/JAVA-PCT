@@ -1,4 +1,5 @@
 import mpi.*;
+
 public class Main {
     static final int MASTER = 0;
     static int[] matrixSizes = {100, 200, 400, 600};
@@ -12,12 +13,11 @@ public class Main {
         int totalTasks = MPI.COMM_WORLD.Size();
 
         if (taskId == MASTER) {
-            System.out.println("-------------------------------------------------------------------------------------------------------------------------------------------------------------");
-            System.out.printf("| %-5s | %-5s | %-9s | %-10s | %-14s | %-10s | %-12s | %-15s | %-10s | %-12s | %-15s | %-10s | %-8s |\n",
+            System.out.println("-----------------------------------------------------------------------------------------------------------------------------");
+            System.out.printf("| %-5s | %-5s | %-12s | %-14s | %-14s | %-10s | %-15s | %-15s | %-10s | %-8s |\n",
                     "Size", "Proc", "Seq Time(ms)", "Block Time(ms)", "Block Speedup", "Block Eff",
-                    "NonBlk Time(ms)", "NonBlk Speedup", "NonBlk Eff",
-                    "Coll Time", "Coll Speedup", "Coll Eff", "Correct?");
-            System.out.println("-------------------------------------------------------------------------------------------------------------------------------------------------------------");
+                    "NonBlk Time(ms)", "NonBlk Speedup", "NonBlk Eff", "Correct?");
+            System.out.println("-----------------------------------------------------------------------------------------------------------------------------");
         }
 
         for (int size : matrixSizes) {
@@ -53,18 +53,6 @@ public class Main {
             }
             long nonBlockingTime = nonBlockingTotalTime / numRuns;
 
-            // Collective multiply
-            long collectiveTotalTime = 0;
-            int[][] resultMatrixCollective = null;
-            for (int i = 0; i < numRuns; i++) {
-                long startTimeCollective = System.currentTimeMillis();
-                resultMatrixCollective = new MatrixMultiplierCollective(false).multiply(matrixA, matrixB, taskId, totalTasks, MASTER);
-                MPI.COMM_WORLD.Barrier();
-                long endTimeCollective = System.currentTimeMillis();
-                collectiveTotalTime += (endTimeCollective - startTimeCollective);
-            }
-            long collectiveTime = collectiveTotalTime / numRuns;
-
             if (taskId == MASTER) {
                 // Sequential multiply for correctness and baseline
                 long sequentialTotalTime = 0;
@@ -79,9 +67,8 @@ public class Main {
 
                 boolean blockingCorrect = MatrixUtils.areEqual(resultMatrixSeq, resultMatrixBlocking);
                 boolean nonBlockingCorrect = MatrixUtils.areEqual(resultMatrixSeq, resultMatrixNonBlocking);
-                boolean collectiveCorrect = MatrixUtils.areEqual(resultMatrixSeq, resultMatrixCollective);
 
-                String allCorrect = (blockingCorrect && nonBlockingCorrect && collectiveCorrect) ? "+" : "-";
+                String allCorrect = (blockingCorrect && nonBlockingCorrect) ? "+" : "-";
 
                 double speedupBlocking = (double) sequentialTime / blockingTime;
                 double efficiencyBlocking = speedupBlocking / logicalCoreCount;
@@ -89,18 +76,15 @@ public class Main {
                 double speedupNonBlocking = (double) sequentialTime / nonBlockingTime;
                 double efficiencyNonBlocking = speedupNonBlocking / logicalCoreCount;
 
-                double speedupCollective = (double) sequentialTime / collectiveTime;
-                double efficiencyCollective = speedupCollective / logicalCoreCount;
-
-                System.out.printf("| %-5d | %-5d | %-12d | %-14d | %-14.2f | %-10.2f | %-15d | %-15.2f | %-10.2f | %-12d | %-15.2f | %-10.2f | %-8s |\n",
+                System.out.printf("| %-5d | %-5d | %-12d | %-14d | %-14.2f | %-10.2f | %-15d | %-15.2f | %-10.2f | %-8s |\n",
                         size, totalTasks,
                         sequentialTime,
                         blockingTime, speedupBlocking, efficiencyBlocking,
                         nonBlockingTime, speedupNonBlocking, efficiencyNonBlocking,
-                        collectiveTime, speedupCollective, efficiencyCollective,
                         allCorrect);
             }
         }
+
         MPI.Finalize();
     }
 }
