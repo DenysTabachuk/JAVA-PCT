@@ -2,7 +2,7 @@ import mpi.*;
 
 public class Main {
     static final int MASTER = 0;
-    static int[] matrixSizes = {100, 300, 500, 700};
+    static int[] matrixSizes = {100, 200, 300, 500};
     static int numRuns = 5; // Кількість запусків для кожного методу
     static int logicalCoreCount = 12;
 

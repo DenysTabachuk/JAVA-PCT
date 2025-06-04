@@ -7,7 +7,7 @@ import Matrix.FoxAlgorithm;
 import static Matrix.MatrixUtils.*;
 
 public class MatrixMultiplicationMPI {
-    private static final int SIZE = 2000;
+    private static final int SIZE = 500;
     private static final int MASTER = 0;  // Ідентифікатор головного процесу
     private static final int THREADS_PER_NODE = 2; // Потоки на один процес
 
@@ -26,6 +26,11 @@ public class MatrixMultiplicationMPI {
         if (processId == MASTER) {
             A = Matrix.randomMatrix(SIZE, SIZE);
             B = Matrix.randomMatrix(SIZE, SIZE);
+            System.out.println("Matrix A:");
+            System.out.println(A);
+
+            System.out.println("Matrix B:");
+            System.out.println(B);
         }
 
         // Підготовка до передачі всім вузлам
@@ -89,8 +94,10 @@ public class MatrixMultiplicationMPI {
         // Виведення фінального результату на головному процесі
         if (processId == MASTER) {
             Matrix resultMatrix = deserializeMatrix(fullFlatResult, SIZE, SIZE);
-            System.out.println("Результат перемноження матриць (" + SIZE + "x" + SIZE + ")");
-            System.out.println("Час виконання: " + (finish - start) + " мс");
+            System.out.println("Result Matrix:");
+            System.out.println(resultMatrix);
+            System.out.println("Matrix multiplication result (" + SIZE + "x" + SIZE + ")");
+            System.out.println("Execution time: " + (finish - start) + " ms");
         }
 
         MPI.Finalize();

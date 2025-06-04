@@ -71,9 +71,7 @@ public class MatrixMultiplierNonBlocking {
             }
 
         } else {
-            // Worker receives data
-            int[][] partialA = new int[numRowsA][numColsA];  // Повна матриця A не використовується, тільки частина
-            int[][] fullB = new int[numColsA][numColsB];     // Повна матриця B
+            int[][] fullB = new int[numColsA][numColsB];
             int[] offsetBuf = {0};
             int[] rowsBuf = {0};
 
@@ -90,6 +88,9 @@ public class MatrixMultiplierNonBlocking {
             // Отримання частини A
             Request recvARequest = COMM_WORLD.Irecv(receivedA, 0, numRowsReceived, MPI.OBJECT, MASTER, TAG_FROM_MASTER);
 
+
+            // Очікуємо завершення неблокуючого отримання матриці B та підматриці A,
+            // перш ніж переходити до обчислень множення
             recvBRequest.Wait();
             recvARequest.Wait();
 
@@ -128,20 +129,5 @@ public class MatrixMultiplierNonBlocking {
         }
 
         return resultMatrix;
-    }
-
-    // Функції flatten/expand наразі не використовуються, але корисні для альтернативного способу передачі
-    private static int[] flattenMatrix(int[][] matrix, int rowOffset, int rows, int cols) {
-        int[] flat = new int[rows * cols];
-        for (int i = 0; i < rows; i++) {
-            System.arraycopy(matrix[rowOffset + i], 0, flat, i * cols, cols);
-        }
-        return flat;
-    }
-
-    private static void expandMatrix(int[][] resultMatrix, int[] flat, int offset, int rows, int cols) {
-        for (int i = 0; i < rows; i++) {
-            System.arraycopy(flat, i * cols, resultMatrix[offset + i], 0, cols);
-        }
     }
 }
